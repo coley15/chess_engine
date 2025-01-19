@@ -74,7 +74,7 @@ class King:
             self.image = pygame.image.load('assets\\wK.png')
 
 
-# Define inital board state
+# Define inital board state using cardnality operators
 board = [
 
     [Rook('black', (0, 0)), Knight('black', (1, 0)), Bishop('black', (2, 0)), Queen('black', (3, 0)), King('black', (4, 0)), Bishop('black', (5, 0)), Knight('black', (6, 0)), Rook('black', (7, 0))],
@@ -102,9 +102,17 @@ class Board:
         for col in range(8):
             for row in range(8):
                 if (col + row) % 2 == 0:
-                    pygame.draw.rect(WIN, (243, 186, 234), (col * self.tile_size, row * self.tile_size, self.tile_size, self.tile_size))
+                    pygame.draw.rect(WIN, (37, 150, 190), (col * self.tile_size, row * self.tile_size, self.tile_size, self.tile_size))
                 else:
-                    pygame.draw.rect(WIN, (123, 186, 243), (col * self.tile_size, row * self.tile_size, self.tile_size, self.tile_size))
+                    pygame.draw.rect(WIN, (240, 217, 181), (col * self.tile_size, row * self.tile_size, self.tile_size, self.tile_size))
+
+
+        # Loop through every piece and check if it is highlighted, if it is draw a red tile
+        for col in range(8):
+            for row in range(8):
+                if self.board[col][row] != None and self.board[col][row].is_highlighted:
+                    pygame.draw.rect(WIN, (255, 40, 40), (row * self.tile_size, col * self.tile_size, self.tile_size, self.tile_size))
+
 
         # Draw pieces
         for col in range(8):
@@ -117,17 +125,7 @@ class Board:
                     # Rescale the image to fit a tile
                     image = pygame.transform.scale(image, (self.tile_size, self.tile_size))
                     WIN.blit(image, (row * self.tile_size, col * self.tile_size))
-
-                    # If the pieces is_highlighted state is true, highlight the current square
-                    if self.board[col][row].is_highlighted == True:
-                        self.highlight_square(row, col)
-
-
-    def highlight_square(self, row, col):
-        red_overlay = pygame.Surface((self.tile_size, self.tile_size))
-        red_overlay.set_alpha(150)
-        red_overlay.fill((255, 0, 0))
-        WIN.blit(red_overlay, (row * self.tile_size, col * self.tile_size))
+        
 
 
 class Game:
@@ -198,7 +196,16 @@ while run:
 
     board.draw()
 
-
     pygame.display.update()
     pygame.display.set_caption("Chess")
+
+
+# Todo
+
+# 1. Ensure that you cannot take your own pieces
+# 2. Implement piece movement logic
+# 3. Add checkmate, checks, and stalements
+# 4. Add alpha-beta pruning
+# 5. Stockfish
+
 
