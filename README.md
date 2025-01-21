@@ -1,8 +1,18 @@
 Hello,
 
-I've created a large many chess projects in my days, many failed and many almost successes.
-I do infact believe, that this one will finally be successful. I do believe that we can make this one work
+This project has been many years in the making and we're finally here!
+
+Requirments to run:
+
+Pygame
+
+How to run:
+
+ Have git and pygame installed
+
+ 'git clone https://github.com/coley15/chess_engine'
+
+ run 'main.py'
 
 
-
-If you want to run this script, just clone it and run main.py via 'python3 main.py'
+Poop!

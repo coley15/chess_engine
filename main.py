@@ -1,5 +1,6 @@
 import pygame
 import random
+import time
 
 pygame.mixer.init()
 
@@ -12,6 +13,7 @@ WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 
 # Sound effects
 capture_sound = pygame.mixer.Sound("sfx/capture.mp3")
+move_sound = pygame.mixer.Sound('sfx/move.mp3')
 
 # Define classes for all the pieces
 class Pawn:
@@ -362,9 +364,13 @@ class Game:
         # Get the positon of the piece before it moves
         old_row, old_col = piece.position
 
+        # Prioritize playing the capture sound over the move sound
         captured_piece = self.board[row][col]
         if captured_piece:
             pygame.mixer.Sound.play(capture_sound)
+
+        elif captured_piece is None:
+            pygame.mixer.Sound.play(move_sound)
 
         # Replace that position with None
         self.board[old_row][old_col] = None
@@ -549,12 +555,17 @@ class Game:
 board = Board()
 game = Game(board)
 
+ai_turn_start_time = None
+# A fabricated time it takes for the ai to make a move
+# Possibly remove this later as it may cause problems
+# ALso it's in seconds
+fake_ai_time = 0.5
 clock = pygame.time.Clock()
 
 run = True
 while run:
 
-    clock.tick(5)
+    clock.tick(60)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -565,8 +576,14 @@ while run:
 
             game.handle_press(row, col)
 
-    if not game.game_over:
-        game.ai_move()
+    # Add (or remove) "and game.turn == 'black'" if you want only black to play as an "AI"
+    if game.turn == 'black' and not game.game_over:
+        if ai_turn_start_time is None:
+            ai_turn_start_time = time.time()
+
+        if time.time() - ai_turn_start_time >= fake_ai_time:
+            game.ai_move()
+            ai_turn_start_time = None
     
     board.draw(game.valid_moves)
 
