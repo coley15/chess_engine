@@ -153,6 +153,7 @@ class Rook:
         self.colour = colour
         self.position = position
         self.is_highlighted = False
+        self.has_moved = False
 
         if self.colour == 'black':
             self.image = pygame.image.load('assets\\bR.png')
@@ -235,6 +236,7 @@ class King:
         self.colour = colour
         self.position = position
         self.is_highlighted = False
+        self.has_moved = False
 
         if self.colour == 'black':
             self.image = pygame.image.load('assets\\bK.png')
@@ -245,6 +247,7 @@ class King:
         valid_moves = []
         y, x = self.position
 
+        # Normal king movement
         directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
         for dy, dx in directions:
@@ -255,6 +258,31 @@ class King:
 
                 if target is None or target.colour != self.colour:
                     valid_moves.append((new_y, new_x))
+
+        # Castling logic
+        if not self.has_moved: # Check if the King hasn't moved
+            row = self.position[0]
+
+            # Kingside castling
+            kingside_rook = board[row][7]
+            # Check if the kingside rook is actually there and if it has moved before
+            if isinstance(kingside_rook, Rook) and not kingside_rook.has_moved:
+                if board[row][5] is None and board[row][6] is None: # The squares between the king and the rook must be None
+                    if not game.is_square_under_attack((row, 4), self.colour) and \
+                    not game.is_square_under_attack((row , 5), self.colour) and \
+                    not game.is_square_under_attack((row, 6), self.colour):
+                        valid_moves.append((row, 6))
+
+            # Queen side castling
+            queenside_rook = board[row][0]
+            if isinstance(queenside_rook, Rook) and not queenside_rook.has_moved:
+                if board[row][3] is None and board[row][2] is None and board[row][1] is None:  # Squares are empty
+                    if not game.is_square_under_attack((row, 4), self.colour) and \
+                    not game.is_square_under_attack((row, 3), self.colour) and \
+                    not game.is_square_under_attack((row, 2), self.colour):
+                        valid_moves.append((row, 2))  # Castling move (queenside)
+
+
 
         return valid_moves
 
@@ -269,6 +297,7 @@ board = [
     [Pawn('white', (6, x)) for x in range(COLS)],
     [Rook('white', (7, 0)), Knight('white', (7, 1)), Bishop('white', (7, 2)), Queen('white', (7, 3)), King('white', (7, 4)), Bishop('white', (7, 5)), Knight('white', (7, 6)), Rook('white', (7, 7))]
 ]
+
 
 
 class Board:
@@ -321,7 +350,7 @@ class Game:
 
         piece = self.board[row][col]
 
-        #If the game is over stop processing inputs
+        # If the game is over stop processing inputs
         if self.game_over == True:
             return
 
@@ -342,6 +371,11 @@ class Game:
                     self.move_piece(self.selected_piece, row, col)
                     self.switch_turn()
 
+                    if self.check_insufficent_material():
+                        print("Draw by insufficent material!")
+
+                        self.game_over = True
+
                     if self.is_checkmate():
                         print(f"Checkmate! {self.turn.capitalize()} loses.")
 
@@ -359,10 +393,36 @@ class Game:
                 self.selected_piece.is_highlighted = True
                 self.valid_moves = self.get_valid_moves(self.selected_piece)
 
-    def move_piece(self, piece, row, col):
+    def move_piece(self, piece, row, col, simulation=False):
         
         # Get the positon of the piece before it moves
         old_row, old_col = piece.position
+
+        # Checks if the piece being moved is the king and if it's moving two squares horizontally
+        # This means you know it's a castling move so now adjust the rook
+        # Also ensure that simulation is set to False
+        if isinstance(piece, King) and abs(col - old_col) == 2 and not simulation:
+            # Kingside castling
+            if col > old_col:
+                # Just swap the rook to the right spot and update it position
+                rook = self.board[old_row][7]
+                self.board[old_row][7] = None
+                self.board[old_row][col - 1] = rook
+                rook.position = (old_row, col - 1)
+
+            # Queenside castling
+            else:
+                # Same thing here, just swap the rook to where it needs to be
+                rook = self.board[old_row][0]
+                self.board[old_row][0] = None
+                self.board[old_row][col + 1] = rook
+                rook.position = (old_row, col + 1)
+
+
+        # If the piece moving is a king or a rook update its has_moved variable
+        if not simulation and isinstance(piece, (Rook, King)):
+            piece.has_moved = True
+
 
         # Prioritize playing the capture sound over the move sound
         captured_piece = self.board[row][col]
@@ -452,15 +512,22 @@ class Game:
 
         # Loop through the whole board for the opponents coloured pieces
         # Then find their valid moves, if the king is in that position, then it's in check
-        for row in range(ROWS):
-            for col in range(COLS):
-                piece = self.board[row][col]
+        for r in range(ROWS):
+            for c in range(COLS):
+                piece = self.board[r][c]
                 if piece and piece.colour == opponent_colour:
-                    # Check if the position of the piece is in the valid_move list
-                    # Which in this case it's checking every opponent coloured pieces possible moves
-                    # To see if our king is under attack after a simulated move for example
-                    if position in piece.get_valid_moves(self.board):
-                        return True
+                    if isinstance(piece, King):
+                        king_moves = [
+                            (r + dr, c + dc)
+                            for dr, dc in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+                            if 0 <= r + dr < ROWS and 0 <= c + dc < COLS
+                        ]
+                        if position in king_moves:
+                            return True
+                    else:
+                        # For all other pieces use their valid moves
+                        if position in piece.get_valid_moves(self.board):
+                            return True
 
         return False
 
@@ -535,22 +602,129 @@ class Game:
 
                 return random_piece, random_move
 
-    
-        
-    def ai_move(self):
-        move = self.get_random_move()
+    def evaluate_board(self):
+        piece_values = {'Pawn': 1, 'Knight': 3, 'Bishop': 3.5, 'Rook': 5, 'Queen': 9, 'King': 10000}
 
-        if move:
-            piece, (row, col) = move
+        score = 0
+        for row in self.board:
+            for piece in row:
+                if piece:
+                    value = piece_values[type(piece).__name__]
+                    score += value if piece.colour == 'white' else -value
+
+        return score
+
+
+    def minimax(self, depth, is_maximizing):
+        # Base case: Evaluate the board when depth reaches 0
+        if depth == 0 or self.game_over:
+            return self.evaluate_board()
+
+        if is_maximizing:
+            max_eval = float('-inf')
+            for piece in self.get_all_pieces('white'):  # Assuming AI plays as white
+                valid_moves = self.get_valid_moves(piece)
+                for move in valid_moves:
+                    # Simulate the move
+                    old_position = piece.position
+                    captured_piece = self.board[move[0]][move[1]]
+                    # Set simulation to true to ensure that it doesn't count
+                    # Simulation king moves as actual moves so the player can still castle
+                    self.move_piece(piece, move[0], move[1], simulation=True)
+
+                    # Recursive call
+                    eval = self.minimax(depth - 1, False)
+
+                    # Undo the move
+                    self.board[move[0]][move[1]] = captured_piece
+                    piece.position = old_position
+                    self.board[old_position[0]][old_position[1]] = piece
+
+                    # Update max evaluation
+                    max_eval = max(max_eval, eval)
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for piece in self.get_all_pieces('black'):  # Opponent's pieces
+                valid_moves = self.get_valid_moves(piece)
+                for move in valid_moves:
+                    # Simulate the move
+                    old_position = piece.position
+                    captured_piece = self.board[move[0]][move[1]]
+                    self.move_piece(piece, move[0], move[1], simulation=True)
+
+                    # Recursive call
+                    eval = self.minimax(depth - 1, True)
+
+                    # Undo the move
+                    self.board[move[0]][move[1]] = captured_piece
+                    piece.position = old_position
+                    self.board[old_position[0]][old_position[1]] = piece
+
+                    # Update min evaluation
+                    min_eval = min(min_eval, eval)
+            return min_eval
+
+
+    def ai_move(self):
+        best_move = None
+        best_value = float('-inf') if self.turn == 'white' else float('inf')
+
+        for piece in self.get_all_pieces(self.turn):
+            valid_moves = self.get_valid_moves(piece)
+            for move in valid_moves:
+                # Simulate the move
+                old_position = piece.position
+                captured_piece = self.board[move[0]][move[1]]
+                self.move_piece(piece, move[0], move[1])
+
+                # Use Minimax to evaluate the move
+                eval = self.minimax(2, self.turn != 'white')  # Depth of 2
+
+                # Undo the move
+                self.board[move[0]][move[1]] = captured_piece
+                piece.position = old_position
+                self.board[old_position[0]][old_position[1]] = piece
+
+                # Choose the best move
+                if (self.turn == 'white' and eval > best_value) or (self.turn == 'black' and eval < best_value):
+                    best_value = eval
+                    best_move = (piece, move)
+
+        # Execute the best move
+        if best_move:
+            piece, (row, col) = best_move
             self.move_piece(piece, row, col)
             self.switch_turn()
 
-            # Must check for checkmate here as it won't check elsewhere
-            # Not having this line caused many errors :(
-            if self.is_checkmate():
-                print(f"Checkmate! {self.turn.capitalize()} loses.")
 
-                self.game_over = True
+    def get_all_pieces(self, colour):
+        return [piece for row in self.board for piece in row if piece and piece.colour == colour]
+
+    def check_insufficent_material(self):
+        # King vs. King
+        # King vs. Bishop and King
+        # King vs. Knight and King
+        black_pieces = [piece for row in self.board for piece in row if piece and piece.colour == 'black']
+        white_pieces = [piece for row in self.board for piece in row if piece and piece.colour == 'white']
+
+        white_piece_count = len(white_pieces)
+        black_piece_count = len(black_pieces)
+
+        total_count = white_piece_count + black_piece_count
+
+        # Two kings situation
+        if total_count == 2:
+            return True
+        
+        # Three pieces; check if one of their pieces is a bishop or a knight
+        elif total_count == 3:
+            for row in range(ROWS):
+                for col in range(COLS):
+                    piece = self.board[row][col] 
+                    if piece and isinstance(piece, Knight) or isinstance(piece, Bishop):
+                        return True
+
 
 board = Board()
 game = Game(board)
@@ -559,13 +733,13 @@ ai_turn_start_time = None
 # A fabricated time it takes for the ai to make a move
 # Possibly remove this later as it may cause problems
 # ALso it's in seconds
-fake_ai_time = 0.5
+fake_ai_time = 0.0
 clock = pygame.time.Clock()
 
 run = True
 while run:
 
-    clock.tick(60)
+    clock.tick(300)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -578,22 +752,21 @@ while run:
 
     # Add (or remove) "and game.turn == 'black'" if you want only black to play as an "AI"
     if game.turn == 'black' and not game.game_over:
-        if ai_turn_start_time is None:
-            ai_turn_start_time = time.time()
+        game.ai_move()
 
-        if time.time() - ai_turn_start_time >= fake_ai_time:
-            game.ai_move()
-            ai_turn_start_time = None
     
     board.draw(game.valid_moves)
 
     pygame.display.update()
     pygame.display.set_caption("Chess")
 
+
+
 # Todo
 
-# -1. Add rules like insufficent material = draw
+# Add commenting
 # 0. Add random rules and fix stuff
 # 1. Add alpha-beta pruning
+# isinstance
 
 
