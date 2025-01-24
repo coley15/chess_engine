@@ -470,10 +470,21 @@ class Game:
 
         # Only return moves that do not violate moving into check rules
         for move in all_valid_moves:
+            # Exclude moves where the piece remains in it's current position
+            if move == selected_piece.position:
+                continue
+
             if not self.exposes_king(selected_piece, move):
                 safe_moves.append(move)
 
-        return safe_moves
+        def move_priority(move):
+            target_piece = self.board[move[0]][move[1]]
+            if target_piece:
+                return 10
+            
+            return 0
+
+        return sorted(safe_moves, key=move_priority, reverse=True)
 
     # Basically checks if making a certain move will cause the king to be in check
     def exposes_king(self, selected_piece, move):
@@ -590,184 +601,6 @@ class Game:
         row, col = pawn.position
         self.board[row][col] = promoted_piece
 
-    def get_random_move(self):
-        black_pieces = [piece for row in self.board for piece in row if piece and piece.colour == self.turn]
-
-        if not black_pieces:
-            return None
-        
-        while True:
-
-            random_piece = random.choice(black_pieces)
-            valid_moves = self.get_valid_moves(random_piece)
-
-            if valid_moves:
-                random_move = random.choice(valid_moves)
-
-                return random_piece, random_move
-
-    def score_move(self, piece, move):
-        """Score a move for move ordering."""
-
-        piece_values = {'Pawn': 1, 'Knight': 3, 'Bishop': 3.2, 'Rook': 5, 'Queen': 10, 'King': 0}
-        
-        captured_piece = self.board[move[0]][move[1]]
-        if captured_piece:
-            return piece_values[type(captured_piece).__name__] * 10
-        
-        return 0
-
-    def evaluate_board(self):
-        piece_values = {'Pawn': 1, 'Knight': 3, 'Bishop': 3.2, 'Rook': 5, 'Queen': 10, 'King': 0}
-        
-        pawn_advancement_bonus = [0, 1, 2, 3, 4, 5, 6, 0]
-
-        score = 0
-        for row in range(ROWS):
-            for col in range(COLS):
-                piece = self.board[row][col]
-                if piece:
-                    # Base vlaue of a piece
-                    value = piece_values[type(piece).__name__]
-
-                    if isinstance(piece, Pawn):
-                        if piece.colour == 'white':
-                            value += pawn_advancement_bonus[row]
-                        else:
-                            value -= pawn_advancement_bonus[7 - row]
-                    
-                    if isinstance(piece, Knight):
-                        if 2 <= row <= 5 and 2 <= col <= 5:
-                            value += 1.5
-
-                    score += value if piece.colour == 'white' else -value
-
-
-
-        return score
-
-    def minimax(self, depth, alpha, beta, is_maximizing):\
-
-        self.nodes_evaluated += 1
-
-        board_hash = self.hash_board()
-        if board_hash in self.transposition_table:
-            return self.transposition_table[board_hash]
-
-        # Base case: Evaluate the board when depth reaches 0
-        if depth == 0 or self.game_over:
-            return self.evaluate_board()
-
-        if is_maximizing:
-            max_eval = float('-inf')
-            for piece in self.get_all_pieces('white'): 
-                valid_moves = self.get_valid_moves(piece)
-                valid_moves = sorted(valid_moves, key=lambda move: self.score_move(piece, move), reverse=True)
-
-
-                for move in valid_moves:
-                    # Simulate the move
-                    old_position = piece.position
-                    captured_piece = self.board[move[0]][move[1]]
-                    # Set simulation to true to ensure that it doesn't count
-                    # Simulation king moves as actual moves so the player can still castle
-                    self.move_piece(piece, move[0], move[1], simulation=True)
-
-                    # Recursive call
-                    eval = self.minimax(depth - 1, alpha, beta, False)
-                    #print(f"Move: {move}, Evaluation: {eval}")
-                    # Undo the move
-                    self.board[move[0]][move[1]] = captured_piece
-                    piece.position = old_position
-                    self.board[old_position[0]][old_position[1]] = piece
-
-                    # Update max evaluation
-                    max_eval = max(max_eval, eval)
-                    alpha = max(alpha, eval)
-
-                    if beta <= alpha:
-                        self.pruned_branches += 1
-                        break
-            
-            self.transposition_table[board_hash] = max_eval
-            return max_eval
-        else:
-            min_eval = float('inf')
-            for piece in self.get_all_pieces('black'):  # Opponent's pieces
-                valid_moves = self.get_valid_moves(piece)
-                valid_moves = sorted(valid_moves, key=lambda move: self.score_move(piece, move), reverse=True)
-
-                for move in valid_moves:
-                    # Simulate the move
-                    old_position = piece.position
-                    captured_piece = self.board[move[0]][move[1]]
-                    self.move_piece(piece, move[0], move[1], simulation=True)
-
-                    # Recursive call
-                    eval = self.minimax(depth - 1, alpha, beta, True)
-                    #print(f"Move: {move}, Evaluation: {eval}")
-                    # Undo the move
-                    self.board[move[0]][move[1]] = captured_piece
-                    piece.position = old_position
-                    self.board[old_position[0]][old_position[1]] = piece
-
-                    # Update min evaluation
-                    min_eval = min(min_eval, eval)
-                    beta = min(beta, eval)
-
-                    if beta <= alpha:
-                        self.pruned_branches += 1
-                        break
-
-            self.transposition_table[board_hash] = min_eval
-            return min_eval
-
-    def hash_board(self):
-        return hash(str(self.board))
-
-    def ai_move(self):
-        self.nodes_evaluated = 0
-        self.pruned_branches = 0
-        self.transposition_table = {}
-
-        best_move = None
-        best_value = float('inf')
-
-        for piece in self.get_all_pieces(self.turn):
-            valid_moves = self.get_valid_moves(piece)
-            valid_moves = sorted(valid_moves, key=lambda move: self.score_move(piece, move), reverse=True)
-
-            for move in valid_moves:
-                # Simulate the move
-                old_position = piece.position
-                captured_piece = self.board[move[0]][move[1]]
-                self.move_piece(piece, move[0], move[1])
-
-                # Use Minimax to evaluate the move
-                eval = self.minimax(2, float('-inf'), float('inf'), self.turn != 'white')  # Depth of 2
-
-                # Undo the move
-                self.board[move[0]][move[1]] = captured_piece
-                piece.position = old_position
-                self.board[old_position[0]][old_position[1]] = piece
-
-                # Choose the best move
-                if eval < best_value:
-                    best_value = eval
-                    best_move = (piece, move)
-
-        # Execute the best move
-        if best_move:
-            piece, (row, col) = best_move
-            self.move_piece(piece, row, col)
-            self.switch_turn()
-
-        print(f"Nodes evaluated: {self.nodes_evaluated}")
-        print(f"Branches pruned: {self.pruned_branches}")
-
-
-    def get_all_pieces(self, colour):
-        return [piece for row in self.board for piece in row if piece and piece.colour == colour]
 
     def check_insufficent_material(self):
         # King vs. King
@@ -792,6 +625,117 @@ class Game:
                     piece = self.board[row][col] 
                     if piece and isinstance(piece, Knight) or isinstance(piece, Bishop):
                         return True
+
+    def evaluate_board(self):
+        """ Evaluate the board from whites perspective """
+        piece_values = {'Pawn': 1, 'Knight': 3, 'Bishop': 3.2, 'Rook': 5, 'Queen': 10, 'King': 0}
+        
+        score = 0
+        for row in range(ROWS):
+            for col in range(COLS):
+                piece = self.board[row][col]
+                if piece:
+                    value = piece_values[type(piece).__name__]
+                    if piece.colour == 'white':
+                        score += value
+                    else:
+                        score -= value
+        
+        return score
+
+    def minimax(self, depth, alpha, beta, is_maximizing):
+        self.nodes_evaluated += 1
+        print(f"Depth: {depth}, Player: {'Maximizing (White)' if is_maximizing else 'Minimizing (Black)'}")
+
+        if depth == 0 or self.game_over:
+            return self.evaluate_board()
+        
+        if is_maximizing:
+            max_eval = float('-inf')
+            for piece in self.get_all_pieces('white'):
+                for move in self.get_valid_moves(piece):
+                    # Simulate move
+                    old_position, caputured_piece = self.simulate_move(piece, move)
+                    eval = self.minimax(depth - 1, alpha, beta, False)
+
+                    # Undo move
+                    self.undo_move(piece, old_position, move, caputured_piece)
+
+                    max_eval = max(max_eval, eval)
+                    alpha = max(alpha, eval)
+                    if beta <= alpha:
+                        break
+            
+            return max_eval
+        
+        else:
+            min_eval = float('inf')
+            for piece in self.get_all_pieces('black'):
+                for move in self.get_valid_moves(piece):
+                    # Simulate move
+                    old_position, captured_piece = self.simulate_move(piece, move)
+                    eval = self.minimax(depth -1, alpha, beta, True)
+
+                    # Undo move
+                    self.undo_move(piece, old_position, move, captured_piece)
+
+                    min_eval = min(min_eval, eval)
+                    beta = min(beta, eval)
+
+                    if beta <= alpha:
+                        break
+            
+            return min_eval
+
+    def simulate_move(self, piece, move):
+        """ Simulate moving a piece """
+        old_pos = piece.position
+        caputured_piece = self.board[move[0]][move[1]]
+        self.board[old_pos[0]][old_pos[1]] = None
+        self.board[move[0]][move[1]] = piece
+        piece.position = move
+
+        return old_pos, caputured_piece
+    
+    def undo_move(self, piece, old_position, move, captured_piece):
+        """ Undo a simulated move """
+        piece.position = old_position
+        self.board[old_position[0]][old_position[1]] = piece
+        self.board[move[0]][move[1]] = captured_piece
+
+    def get_all_pieces(self, colour):
+        # Return all the pieces of a certain colour
+        return [piece for row in self.board for piece in row if piece and piece.colour == colour]
+
+
+    def ai_move(self):
+        best_move = None
+        best_value = float('-inf') if self.turn == 'white' else float('inf')
+        self.nodes_evaluated = 0
+
+        for piece in self.get_all_pieces(self.turn):
+            for move in self.get_valid_moves(piece):
+                old_position, captured_piece = self.simulate_move(piece, move)
+                eval = self.minimax(2, float('-inf'), float('inf'), self.turn != 'white')
+
+                self.undo_move(piece, old_position, move, captured_piece)
+
+                if self.turn == 'white':
+                    if eval > best_value:
+                        best_value = eval
+                        best_move = (piece, move)
+
+                else:
+                    if eval < best_value:
+                        best_value = eval
+                        best_move = (piece, move)
+        if best_move:
+            piece, move = best_move
+            self.move_piece(piece, move[0], move[1])
+            self.switch_turn()
+
+        print(f"AI evaluated move {piece.position} -> {move} with score {eval}")
+        print(F"{self.nodes_evaluated} moves were evaluated during this move.")
 
 
 board = Board()
