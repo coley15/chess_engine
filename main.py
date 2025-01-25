@@ -454,37 +454,27 @@ class Game:
 
 
     def switch_turn(self):
-        print(f"Switching turn. Current turn: {self.turn}")
         self.turn = 'black' if self.turn == 'white' else 'white'
 
         if self.is_stalemate():
             print(f"Stalemate! {self.turn.capitalize()} has no valid moves and is not in check.")
             self.game_over = True
 
-        # Debugging
-        print(f"Turn switched to {self.turn}")
 
     def get_valid_moves(self, selected_piece):
         all_valid_moves = selected_piece.get_valid_moves(self.board)
         safe_moves = []
 
+        if not selected_piece:
+            return []
+
         # Only return moves that do not violate moving into check rules
         for move in all_valid_moves:
-            # Exclude moves where the piece remains in it's current position
-            if move == selected_piece.position:
-                continue
-
             if not self.exposes_king(selected_piece, move):
                 safe_moves.append(move)
 
-        def move_priority(move):
-            target_piece = self.board[move[0]][move[1]]
-            if target_piece:
-                return 10
-            
-            return 0
 
-        return sorted(safe_moves, key=move_priority, reverse=True)
+        return safe_moves
 
     # Basically checks if making a certain move will cause the king to be in check
     def exposes_king(self, selected_piece, move):
@@ -626,76 +616,17 @@ class Game:
                     if piece and isinstance(piece, Knight) or isinstance(piece, Bishop):
                         return True
 
-    def evaluate_board(self):
-        """ Evaluate the board from whites perspective """
-        piece_values = {'Pawn': 1, 'Knight': 3, 'Bishop': 3.2, 'Rook': 5, 'Queen': 10, 'King': 0}
-        
-        score = 0
-        for row in range(ROWS):
-            for col in range(COLS):
-                piece = self.board[row][col]
-                if piece:
-                    value = piece_values[type(piece).__name__]
-                    if piece.colour == 'white':
-                        score += value
-                    else:
-                        score -= value
-        
-        return score
-
-    def minimax(self, depth, alpha, beta, is_maximizing):
-        self.nodes_evaluated += 1
-        print(f"Depth: {depth}, Player: {'Maximizing (White)' if is_maximizing else 'Minimizing (Black)'}")
-
-        if depth == 0 or self.game_over:
-            return self.evaluate_board()
-        
-        if is_maximizing:
-            max_eval = float('-inf')
-            for piece in self.get_all_pieces('white'):
-                for move in self.get_valid_moves(piece):
-                    # Simulate move
-                    old_position, caputured_piece = self.simulate_move(piece, move)
-                    eval = self.minimax(depth - 1, alpha, beta, False)
-
-                    # Undo move
-                    self.undo_move(piece, old_position, move, caputured_piece)
-
-                    max_eval = max(max_eval, eval)
-                    alpha = max(alpha, eval)
-                    if beta <= alpha:
-                        break
-            
-            return max_eval
-        
-        else:
-            min_eval = float('inf')
-            for piece in self.get_all_pieces('black'):
-                for move in self.get_valid_moves(piece):
-                    # Simulate move
-                    old_position, captured_piece = self.simulate_move(piece, move)
-                    eval = self.minimax(depth -1, alpha, beta, True)
-
-                    # Undo move
-                    self.undo_move(piece, old_position, move, captured_piece)
-
-                    min_eval = min(min_eval, eval)
-                    beta = min(beta, eval)
-
-                    if beta <= alpha:
-                        break
-            
-            return min_eval
 
     def simulate_move(self, piece, move):
         """ Simulate moving a piece """
         old_pos = piece.position
-        caputured_piece = self.board[move[0]][move[1]]
+        captured_piece = self.board[move[0]][move[1]]
+
         self.board[old_pos[0]][old_pos[1]] = None
         self.board[move[0]][move[1]] = piece
         piece.position = move
 
-        return old_pos, caputured_piece
+        return old_pos, captured_piece
     
     def undo_move(self, piece, old_position, move, captured_piece):
         """ Undo a simulated move """
@@ -708,34 +639,28 @@ class Game:
         return [piece for row in self.board for piece in row if piece and piece.colour == colour]
 
 
-    def ai_move(self):
-        best_move = None
-        best_value = float('-inf') if self.turn == 'white' else float('inf')
-        self.nodes_evaluated = 0
+    def count_moves_at_ply(self, depth):
+
+        if depth == 0:
+            return 1
+
+        total_moves = 0
 
         for piece in self.get_all_pieces(self.turn):
             for move in self.get_valid_moves(piece):
-                old_position, captured_piece = self.simulate_move(piece, move)
-                eval = self.minimax(2, float('-inf'), float('inf'), self.turn != 'white')
+                old_pos, captured_piece = self.simulate_move(piece, move)
+                self.switch_turn()
+                total_moves += self.count_moves_at_ply(depth - 1)
+                self.switch_turn()
+                self.undo_move(piece, old_pos, move, captured_piece)
 
-                self.undo_move(piece, old_position, move, captured_piece)
+        
+        return total_moves
 
-                if self.turn == 'white':
-                    if eval > best_value:
-                        best_value = eval
-                        best_move = (piece, move)
 
-                else:
-                    if eval < best_value:
-                        best_value = eval
-                        best_move = (piece, move)
-        if best_move:
-            piece, move = best_move
-            self.move_piece(piece, move[0], move[1])
-            self.switch_turn()
+    def ai_move(self):
+        pass
 
-        print(f"AI evaluated move {piece.position} -> {move} with score {eval}")
-        print(F"{self.nodes_evaluated} moves were evaluated during this move.")
 
 
 board = Board()
@@ -762,11 +687,17 @@ while run:
 
             game.handle_press(row, col)
 
-    # Add (or remove) "and game.turn == 'black'" if you want only black to play as an "AI"
-    if game.turn == 'black' and not game.game_over:
-        game.ai_move()
+    depth = 3
 
-    
+    start_time = time.time()
+    print(f"At depth {depth}, total moves = {game.count_moves_at_ply(depth)}")
+
+    print(f"Execution time: {time.time() - start_time:.2f} seconds")
+    # Add (or remove) "and game.turn == 'black'" if you want only black to play as an "AI"
+    #if game.turn == 'black' and not game.game_over:
+        #game.ai_move()
+
+
     board.draw(game.valid_moves)
 
     pygame.display.update()
@@ -782,4 +713,6 @@ while run:
 # 1. Add alpha-beta pruning
 # isinstance
 
+
+# Check if the same move is being tested twice like in the alpha beta pruning just print the move fully 
 
